@@ -64,7 +64,8 @@ app.MapGet("/lb", async (HttpContext httpContext) =>
 
     // Pull elements of a RemoteSiteDto out of the query string
     //string url = httpContext.Request.Query["url"];
-    string url = "http://awadwatt.com:78/path1/path2";
+    string url = "http://awadwatt.com:80/path1/path2";
+    //string url = "8.8.8.8";
     RemoteSiteDto rsd = new RemoteSiteDto();
     string msg = null;
     if(string.IsNullOrEmpty(url))
@@ -85,6 +86,9 @@ app.MapGet("/lb", async (HttpContext httpContext) =>
         else if (url.StartsWith("https://")) {
             rsd.HTTPS = true;
             parsUrl = url.Substring(8);
+        }
+        else {
+            parsUrl = url;
         }
         // see if there's a port number
         string[] urlParts = parsUrl.Split(":");
@@ -129,14 +133,19 @@ app.MapGet("/lb", async (HttpContext httpContext) =>
         }
 
         // now the fun stuff. 
-        rsd.hostLookup();
-        rsd.hostPing();
-        rsd.hostCurl(); 
-        rsd.portCheck();
+        RemoteSiteController rc = new RemoteSiteController(rsd);
+        
+        rc.hostLookup();
+        rc.hostPing();
+        
+        await rc.portCheck();
+        rc.hostCurl(); 
+
+        // lets serialize rsd to json
+        string jsonString = JsonSerializer.Serialize(rsd);
 
 
-
-        return Results.Ok(rsd);
+        return Results.Ok(jsonString);
 
     }
 
