@@ -83,20 +83,23 @@ public class RemoteSiteController
         }
     }
 
-    public async Task<bool> portCheck(int timeout = 1000)
+    public async Task<string> portCheck(int timeout = 1000)
     {
         string fn = "portCheck"; DBg.d(LogLevel.Trace, fn);
+        string msg=null;
         // if there aren't any resolved addresses, skip this
         if ((rsd.resolvedIPs == null) || (rsd.resolvedIPs.AddressList.Length == 0))
         {
-            DBg.d(LogLevel.Error, "resolvedIPs is null");
-            return false;
+            msg = "No DNS resolved addresses. Cannot check port.";
+            DBg.d(LogLevel.Error, msg);
+            return msg;
         }
         // port should not be null and must be an integer
         if (string.IsNullOrEmpty(rsd.port) || !int.TryParse(rsd.port, out int portInt))
         {
-            DBg.d(LogLevel.Error, "port is null or not an integer");
-            return false;
+            msg = $"port {rsd.port}  is null or not an integer";
+            DBg.d(LogLevel.Error, msg);
+            return msg;
         }
 
         try
@@ -110,8 +113,9 @@ public class RemoteSiteController
                 var address = rsd.resolvedIPs.AddressList[0];
                 if (address.AddressFamily != AddressFamily.InterNetwork && address.AddressFamily != AddressFamily.InterNetworkV6)
                 {
-                    DBg.d(LogLevel.Error, $"Unsupported address family: {address.AddressFamily}");
-                    return false;
+                    msg = $"Unsupported address family: {address.AddressFamily}";
+                    DBg.d(LogLevel.Error, msg );
+                    return msg;
                 }
 
 
@@ -119,33 +123,93 @@ public class RemoteSiteController
 
                 if (await Task.WhenAny(connectTask, Task.Delay(timeout)) == connectTask)
                 {
-                    DBg.d(LogLevel.Trace, "Connected");
+                    DBg.d(LogLevel.Trace, "Connected OK!");
                     await connectTask; // Ensure any exceptions are observed
-                    DBg.d(LogLevel.Trace, $"about to return true");
-                    return true;
+
+                    using (var networkStream = client.GetStream())
+                    using (var reader = new StreamReader(networkStream))
+                    using (var writer = new StreamWriter(networkStream) { AutoFlush = true })
+                    {
+                        // switch based on "expected" port type and send the appropriate command
+                        string command = null;
+
+                        switch (rsd.portType)
+                        {
+                            case null:
+                                break;
+                            case "HTTP": // HTTP
+                            case "HTTPS": // HTTPS
+                                command = $"GET / HTTP/1.1\r\nHost: {rsd.host}\r\nConnection: close\r\n\r\n";
+                                break;
+                            case "SMTP": // SMTP 25
+                                command = "EHLO localhost\r\n";
+                                //expectedResponse = "250";
+                                break;
+                            case "FTP": // FTP 21
+                                command = "USER anonymous\r\n";
+                                //expectedResponse = "331";
+                                break;
+                            case "POP3": // POP3 110
+                                command = "USER test\r\n";
+                                //expectedResponse = "+OK";
+                                break;
+                            case "IMAP": // IMAP 143
+                                command = "a001 LOGIN test test\r\n";
+                                //expectedResponse = "a001 OK";
+                                break;
+                            case "TELNET": // Telnet 23
+                                           // No specific command, just establish a connection
+                                           //expectedResponse = "Connected to";
+                                break;
+                            case "SSH": // SSH 22
+                                        // No specific command, just establish a connection
+                                        //expectedResponse = "SSH-2.0";
+                                break;
+                            case "MySQL": // MySQL 3306
+                                          // No specific command, just establish a connection
+                                          //expectedResponse = "\x00\x00\x00\x0a";
+                                break;
+                            case "Redis": // Redis - 6379
+                                command = "PING\r\n";
+                                //expectedResponse = "+PONG";
+                                break;
+
+                        }
+
+                        if (command != null)
+                        {
+                            await writer.WriteLineAsync(command);
+                            DBg.d(LogLevel.Trace, $"Sent command: {command.Trim()}");
+                        }
+
+                        // Read response
+                        var response = await reader.ReadLineAsync();
+                        msg = $"Received response: {response}";
+                        DBg.d(LogLevel.Trace, msg);
+
+                        return msg;
+
+                    }
                 }
                 else
-                {
-                    DBg.d(LogLevel.Error, "Timed out");
-                    return false; // Timed out
+                    {
+                        msg = "Connection timed out.";
+                        DBg.d(LogLevel.Error, msg);
+                        return msg; // Timed out
+                    }
                 }
             }
-        }
         catch (SocketException ex)
         {
             DBg.d(LogLevel.Error, $"SocketException: {ex.Message}");
             DBg.d(LogLevel.Error, $"Stack Trace: {ex.StackTrace}");
-            return false;
+            return ex.Message;
         }
         catch (Exception ex)
         {
             DBg.d(LogLevel.Error, $"Exception: {ex.Message}");
             DBg.d(LogLevel.Error, $"Stack Trace: {ex.StackTrace}");
-            return false;
-        }
-        catch
-        {
-            return false;
+            return ex.Message;
         }
 
     }
