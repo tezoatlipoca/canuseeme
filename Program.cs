@@ -63,9 +63,10 @@ app.MapGet("/lb", async (HttpContext httpContext) =>
     string fn = "/lb"; DBg.d(LogLevel.Trace, fn);
 
     // Pull elements of a RemoteSiteDto out of the query string
-    //string url = httpContext.Request.Query["url"];
-    string url = "http://awadwatt.com:443/path1/path2";
-    string portType = "HTTPS";
+    string url = httpContext.Request.Query["url"];
+    //string url = "http://awadwatt.com:443/path1/path2";
+    //string portType = "HTTPS";
+    string portType = httpContext.Request.Query["portType"];
     //string url = "8.8.8.8";
     RemoteSiteDto rsd = new RemoteSiteDto();
     string msg = null;
@@ -91,14 +92,16 @@ app.MapGet("/lb", async (HttpContext httpContext) =>
         else {
             parsUrl = url;
         }
+        DBg.d(LogLevel.Trace, $"parsUrl - after protocol strip : {parsUrl}");
         // see if there's a port number
         string[] urlParts = parsUrl.Split(":");
         // if two parts, we have host and port[+path]
         if (urlParts.Length == 2)
         {
+            DBg.d(LogLevel.Trace, $"urlParts[0]: {urlParts[0]}");
+            DBg.d(LogLevel.Trace, $"urlParts[1]: {urlParts[1]}");
             rsd.host = urlParts[0];
-            // strip off any trailing /
-            rsd.host = rsd.host.TrimEnd('/');
+            
             rsd.port = urlParts[1].Split('/')[0]; // strip off anything after the port number
             // if port isn't an integer, we have a problem
             if (!int.TryParse(rsd.port, out int port))
@@ -110,13 +113,25 @@ app.MapGet("/lb", async (HttpContext httpContext) =>
         }
         else if (urlParts.Length == 1)
         {
+            DBg.d(LogLevel.Trace, $"urlParts[0]: {urlParts[0]}");
             rsd.host = urlParts[0];
-            // strip off any trailing /
-            rsd.host = rsd.host.TrimEnd('/');
-            rsd.port = "80";
+            
+            
+            if(rsd.HTTPS)
+            {
+                rsd.port = "443";
+            }
+            else
+            {
+                rsd.port = "80";
+            }
+            
         }
         else
         {
+            DBg.d(LogLevel.Trace, $"urlParts[0]: {urlParts[0]}");
+            DBg.d(LogLevel.Trace, $"urlParts[1]: {urlParts[1]}");
+            DBg.d(LogLevel.Trace, $"urlParts[2]: {urlParts[2]}");
             msg = $"URL parsing failed: {url}.";
             return Results.BadRequest(msg);
         }
@@ -126,27 +141,54 @@ app.MapGet("/lb", async (HttpContext httpContext) =>
         // path is everything after the first /, if there is one
         if (urlParts.Length > 1)
         {
+            for(int i=0; i < urlParts.Length; i++)
+            {
+                DBg.d(LogLevel.Trace, $"urlParts[{i}]: {urlParts[i]}");
+            }
             rsd.path = "/" + string.Join("/", urlParts.Skip(1));
         }
         else
         {
             rsd.path = "/";
         }
+        // in the case there is no port in the URL, we still need to remove the path from the host
+        if(rsd.host.Contains("/"))
+        {
+            string[] hostParts = rsd.host.Split("/");
+            rsd.host = hostParts[0];
+        }
+
+
+
+        DBg.d(LogLevel.Trace, $"rsd.path: {rsd.path}");
+        if(string.IsNullOrEmpty(portType))
+        {
+            portType = "HTTP";
+        }
         rsd.portType = portType;
         // now the fun stuff. 
         RemoteSiteController rc = new RemoteSiteController(rsd);
         
-        rc.hostLookup();
-        rc.hostPing();
+        DBg.d(LogLevel.Trace, $"host: {rsd.host}");
+        DBg.d(LogLevel.Trace, $"port: {rsd.port}");
+        DBg.d(LogLevel.Trace, $"path: {rsd.path}");
         
-        rsd.portResponse = await rc.portCheck();
-        rc.hostCurl(); 
 
-        // lets serialize rsd to json
-        string jsonString = JsonSerializer.Serialize(rsd);
+        rc.hostDNSLookup();
+        if (await rc.hostPing()) {
+            if( await rc.portCheck()) {
+                rc.hostCurl(); 
+            }
+        }
+        
+        
+        
 
 
-        return Results.Ok(jsonString);
+        
+
+
+        return Results.Ok(rc.rsd);
 
     }
 
