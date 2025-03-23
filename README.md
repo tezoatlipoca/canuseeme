@@ -1,7 +1,7 @@
 # CanUSeeMe
 ## A self-hosted auto-responder for remote self-testing local endpoints/websites.
 
-When setting up self-hosted programs or developing web services, or troubleshooting firewall or proxy/reverse-proxy things, sometimes its nice to be able to programmatically look _outside_ your network and query it from beyond, like how someone else would see it. Even better is if we could do so programmatically - like if our program lists on a port, or at a particular hostname have an external agent try reaching us at that hostname:port but then report back so we know we're reachable -if not we can bail or log warnings appropriately. 
+When setting up self-hosted programs or developing web services, or troubleshooting firewall or proxy/reverse-proxy things, sometimes its nice to be able to look _outside_ your network and query it from beyond, like how someone else would see it. You can do this now with a webproxy, but that only works for HTTP/S. Even better is if we could do so programmatically - like if our program lists on a port, or at a particular hostname have an external agent try reaching us at that hostname:port but then report back so we know we're reachable -if not we can bail or log warnings appropriately. 
 
 All `CanUSeeMe` does (for now) is expose a single endpoint `/lb` (for `lookback`) which given a URL, breaks it down and tells you: 
 * what external IP you're talking from
