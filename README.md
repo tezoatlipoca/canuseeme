@@ -39,7 +39,7 @@ which results in:
 ```
 .. which isn't pretty but its functional. This is output that has been pretty-printed by my browser, so that may be adding some unintended relish. 
 
-### Command Line
+## Command Line
 ```
 Usage: ./canuseeme(.exe) -- [options]
 Options:
@@ -51,7 +51,7 @@ Options:
 --sitepng=URL			URL to the site favicon.ico. Default is null        //future - when there are admin pages
 --help            This
 ```
-### Using: 
+## Using: 
 The `/lb` endpoint only returns JSON (maybe we'll add an HTML mode later) - Once you have `canuseeme` running and the port is exposed if you try and hit the `/lb` endpoint with no querystring you'll get 
 ```
 "No URL provided."
@@ -124,7 +124,7 @@ gets me
 ```
 I get _AN_ SMTP error just not the one I was expecting (more work is needed.)
 
-### Future Work
+## Future Work
 
 * improve non HTTP port interrogation (thats still experimental)
 * for non HTTP ports don't bother doing a webget/curl or the cert.
@@ -134,3 +134,6 @@ I get _AN_ SMTP error just not the one I was expecting (more work is needed.)
 * webadmin pages?
 * /about page? 
 * have endpoints to facilitate master/sibling relationships 
+
+## Try it before you buy it
+https://canuseeme.tezoatlipoca.com/lb?url=<your url here>&portType=[HTTP|HTTPS|SMTP|FTP|SSH|.. etc]
