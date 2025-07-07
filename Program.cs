@@ -1,8 +1,8 @@
-
 using System.Text;
 using Microsoft.AspNetCore.HttpOverrides;
 using System.Text.Json;
 using System.Security.Policy;
+using Microsoft.AspNetCore.Http.Json;
 
 
 
@@ -21,6 +21,11 @@ DBg.d(LogLevel.Information, $"canuseeme:{GlobalConfig.bldVersion}");
 
 
 builder.WebHost.UseUrls($"http://{GlobalConfig.Bind}:{GlobalConfig.Port}");
+
+builder.Services.Configure<JsonOptions>(options =>
+{
+    options.SerializerOptions.TypeInfoResolverChain.Add(AppJsonContext.Default);
+});
 
 var app = builder.Build();
 // this configures the middleware to respect the X-Forwarded-For and X-Forwarded-Proto headers
@@ -41,21 +46,18 @@ app.UseRouting();
 app.MapGet("/about", async (HttpContext httpContext) =>
 {
     string fn = "/about"; DBg.d(LogLevel.Trace, fn);
-    StringBuilder sb = new StringBuilder();
-    await GlobalStatic.GenerateHTMLHead(sb, "About");
-    sb.AppendLine("<p>A simple auto-responding web-endpoint written in C# using ASP.NET Core.</p>");
-    await GlobalStatic.GeneratePageFooter(sb);
-    return Results.Text(sb.ToString(), "text/html");
+
+    return Results.Text(GlobalStatic.staticAboutPage, "text/html");
 });
 
 
 
 
 //redirect pathless requests to to the about page
-app.MapGet("/", async (HttpContext httpContext) =>
+app.MapGet("/",  (HttpContext httpContext) =>
 {
     string fn = "/"; DBg.d(LogLevel.Trace, fn);
-    return Results.Redirect("/lb");
+    return Results.Redirect("/about");
 });
 
 app.MapGet("/lb", async (HttpContext httpContext) =>
@@ -68,28 +70,37 @@ app.MapGet("/lb", async (HttpContext httpContext) =>
     //string portType = "HTTPS";
     string portType = httpContext.Request.Query["portType"];
     //string url = "8.8.8.8";
+    bool html = httpContext.Request.Query.ContainsKey("html");
+    // if "html" is in the query string convert it to boolean true; false if otherwise
+    DBg.d(LogLevel.Trace, $"html output requested: {(html ? "yes" : "no")}");
+    
     RemoteSiteDto rsd = new RemoteSiteDto();
+    rsd.callerID = httpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown"; // get the requestors IP address
     string msg = null;
-    if(string.IsNullOrEmpty(url))
+    if (string.IsNullOrEmpty(url))
     {
         msg = "No URL provided.";
         return Results.BadRequest(msg);
     }
-    else {
+    else
+    {
         rsd.url = url;
         DBg.d(LogLevel.Trace, $"url: {url}");
         var parsUrl = url;
         // ok now try and split url into host, port and path components
         // is there an http:// or https:// at the start? 
-        if (url.StartsWith("http://")) {
+        if (url.StartsWith("http://"))
+        {
             rsd.HTTP = true;
             parsUrl = url.Substring(7);
         }
-        else if (url.StartsWith("https://")) {
+        else if (url.StartsWith("https://"))
+        {
             rsd.HTTPS = true;
             parsUrl = url.Substring(8);
         }
-        else {
+        else
+        {
             parsUrl = url;
         }
         DBg.d(LogLevel.Trace, $"parsUrl - after protocol strip : {parsUrl}");
@@ -101,7 +112,7 @@ app.MapGet("/lb", async (HttpContext httpContext) =>
             DBg.d(LogLevel.Trace, $"urlParts[0]: {urlParts[0]}");
             DBg.d(LogLevel.Trace, $"urlParts[1]: {urlParts[1]}");
             rsd.host = urlParts[0];
-            
+
             rsd.port = urlParts[1].Split('/')[0]; // strip off anything after the port number
             // if port isn't an integer, we have a problem
             if (!int.TryParse(rsd.port, out int port))
@@ -109,23 +120,25 @@ app.MapGet("/lb", async (HttpContext httpContext) =>
                 msg = $"Port parsing failed: {url}.";
                 return Results.BadRequest(msg);
             }
-            
+
         }
         else if (urlParts.Length == 1)
         {
             DBg.d(LogLevel.Trace, $"urlParts[0]: {urlParts[0]}");
             rsd.host = urlParts[0];
-            
-            
-            if(rsd.HTTPS)
+
+
+            if (rsd.HTTPS)
             {
                 rsd.port = "443";
+                rsd.portType = "HTTPS";
             }
             else
             {
                 rsd.port = "80";
+                rsd.portType = "HTTP";
             }
-            
+
         }
         else
         {
@@ -136,12 +149,12 @@ app.MapGet("/lb", async (HttpContext httpContext) =>
             return Results.BadRequest(msg);
         }
         // see if there's a path - anything after the first / not counting any http:// or https:// (which we took off above)
-        
+
         urlParts = parsUrl.Split("/");
         // path is everything after the first /, if there is one
         if (urlParts.Length > 1)
         {
-            for(int i=0; i < urlParts.Length; i++)
+            for (int i = 0; i < urlParts.Length; i++)
             {
                 DBg.d(LogLevel.Trace, $"urlParts[{i}]: {urlParts[i]}");
             }
@@ -152,7 +165,7 @@ app.MapGet("/lb", async (HttpContext httpContext) =>
             rsd.path = "/";
         }
         // in the case there is no port in the URL, we still need to remove the path from the host
-        if(rsd.host.Contains("/"))
+        if (rsd.host.Contains("/"))
         {
             string[] hostParts = rsd.host.Split("/");
             rsd.host = hostParts[0];
@@ -161,34 +174,43 @@ app.MapGet("/lb", async (HttpContext httpContext) =>
 
 
         DBg.d(LogLevel.Trace, $"rsd.path: {rsd.path}");
-        if(string.IsNullOrEmpty(portType))
+        if (string.IsNullOrEmpty(portType))
         {
             portType = "HTTP";
         }
         rsd.portType = portType;
         // now the fun stuff. 
         RemoteSiteController rc = new RemoteSiteController(rsd);
-        
+
         DBg.d(LogLevel.Trace, $"host: {rsd.host}");
         DBg.d(LogLevel.Trace, $"port: {rsd.port}");
         DBg.d(LogLevel.Trace, $"path: {rsd.path}");
-        
 
-        rc.hostDNSLookup();
-        if (await rc.hostPing()) {
-            if( await rc.portCheck()) {
-                rc.hostCurl(); 
+
+        if (await rc.hostDNSLookup())
+        {
+            if (await rc.hostPing())
+            {
+                if (await rc.portCheck())
+                {
+                    // only do curl if port is http/https
+                    if (rsd.portType == "HTTP" || rsd.portType == "HTTPS")
+                    {
+                        rc.hostCurl();
+                    }
+                }
             }
         }
-        
-        
-        
 
-
-        
-
-
-        return Results.Ok(rc.rsd);
+        if (!html)
+            {
+                return Results.Ok(rc.rsd);
+            }
+            else
+            {
+                StringBuilder sb = GlobalStatic.HTMLOutput(rc.rsd);
+                return Results.Text(sb.ToString(), "text/html");
+            }
 
     }
 
@@ -204,6 +226,17 @@ using (var mutex = new Mutex(true, GlobalStatic.applicationName, out createdNew)
 {
     if (createdNew)
     {
+        app.UseStatusCodePages(async context =>
+        {
+            if (context.HttpContext.Response.StatusCode == 404)
+            {
+                context.HttpContext.Response.ContentType = "text/html";
+                var path = context.HttpContext.Request.Path;
+                var html = GlobalStatic.Generate404Page(path);
+                await context.HttpContext.Response.WriteAsync(html.ToString());
+            }
+        });
+
         app.Run();
     }
     else

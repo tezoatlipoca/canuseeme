@@ -18,7 +18,7 @@ public static class GlobalConfig
 
     public static string? bldVersion { get; set; }
 
-
+    public static string? siteInformation { get; set; } = null;
     public static string? sitecss { get; set; } = null;
     public static string? sitepng { get; set; } = null;
 
@@ -37,7 +37,31 @@ public static class GlobalConfig
         // we'll split on the = and then switch on the key
         foreach (var arg in args)
         {
-            var splitArg = arg.Split('=');
+            var splitArg = arg.Split('=', 2);
+            if (splitArg.Length == 1)
+            {
+                DBg.d(LogLevel.Trace, $"Startup command line argument {arg} has no value part");
+                switch (splitArg[0])
+                {
+                    case "--help":
+                        Console.WriteLine("Usage: ./canuseeme(.exe) -- [options]");
+                        Console.WriteLine("Options:");
+                        Console.WriteLine("--port=PORT\t\t\tPort to listen on. Default is 5000");
+                        Console.WriteLine("--bind=IP\t\t\tIP address to bind to. Default is *");
+                        Console.WriteLine("--hostname=URL\t\t\tURL to use in links. Default is http://localhost - INCLUDE http[s]:// and any external port");
+                        Console.WriteLine("--runlevel=LEVEL\t\t\tLog level. Default is Information");
+                        Console.WriteLine("--sitecss=URL\t\t\tURL to the site stylesheet. Default is null");
+                        Console.WriteLine("--sitepng=URL\t\t\tURL to the site favicon.ico. Default is null");
+                        Console.WriteLine("--siteinfo=\"Yor info here\" <- this goes on the About Page");
+                        Environment.Exit(0);
+                        break;
+                    default:
+                        DBg.d(LogLevel.Warning, $"Unexpected command line argument: {splitArg[0]}");
+                        break;
+                }
+                continue;
+            }
+            DBg.d(LogLevel.Trace, $"Startup command line argument {arg} split into {splitArg[0]} and {splitArg[1]}");
             switch (splitArg[0])
             {
                 case "--port":
@@ -57,20 +81,29 @@ public static class GlobalConfig
                     break;
                 case "--sitecss":
                     sitecss = splitArg[1];
+                    DBg.d(LogLevel.Information, $"Admin page stylesheet: {sitecss}");
+                    readStyleSheet(sitecss);
                     break;
                 case "--sitepng":
                     sitepng = splitArg[1];
+                    DBg.d(LogLevel.Information, $"Admin page favicon.ico (png file): {sitepng}");
+                    readSitePNG(sitepng);
                     break;
                 case "--help":
                     Console.WriteLine("Usage: ./canuseeme(.exe) -- [options]");
                     Console.WriteLine("Options:");
                     Console.WriteLine("--port=PORT\t\t\tPort to listen on. Default is 5000");
                     Console.WriteLine("--bind=IP\t\t\tIP address to bind to. Default is *");
-                    Console.WriteLine("--hostname=URL\t\t\tURL to use in links. Default is http://localhost");
+                    Console.WriteLine("--hostname=URL\t\t\tURL to use in links. Default is http://localhost - INCLUDE http[s]:// and any external port");
                     Console.WriteLine("--runlevel=LEVEL\t\t\tLog level. Default is Information");
                     Console.WriteLine("--sitecss=URL\t\t\tURL to the site stylesheet. Default is null");
                     Console.WriteLine("--sitepng=URL\t\t\tURL to the site favicon.ico. Default is null");
+                    Console.WriteLine("--siteinfo=\"Yor info here\" <- this goes on the About Page");
                     Environment.Exit(0);
+                    break;
+                case "--siteinfo":
+                    DBg.d(LogLevel.Debug, $"Site information: {splitArg[1]}");
+                    siteInformation = splitArg[1];
                     break;
                 default:
                     DBg.d(LogLevel.Warning, $"Unexpected command line argument: {splitArg[0]}");
@@ -98,8 +131,27 @@ public static class GlobalConfig
         // lastly get the AssemblyInformationalVersion attribute from the assembly and store it in a static variable
         var bldVersionAttribute = Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>();
         // convert it to a string and store it in a static variable
-        bldVersion = bldVersionAttribute?.InformationalVersion;
+        if (bldVersionAttribute?.InformationalVersion != null)
+        {
+            string fullVersion = bldVersionAttribute.InformationalVersion;
+            int plusIndex = fullVersion.IndexOf('+');
+            if (plusIndex >= 0 && plusIndex < fullVersion.Length - 1)
+            {
+                string baseVersion = fullVersion.Substring(0, plusIndex);
+                string gitHash = fullVersion.Substring(plusIndex + 1);
+                if (gitHash.Length > 7)
+                {
+                    gitHash = gitHash.Substring(0, 7);
+                }
+                bldVersion = $"{baseVersion}+{gitHash}";
+            }
+            else
+            {
+                bldVersion = fullVersion;
+            }
+        }
 
+        GlobalStatic.GenerateAboutPage();
         return true;
 
     }
@@ -133,8 +185,46 @@ public static class GlobalConfig
 
         }
         return returnLevel;
+    }
 
+    public static void readStyleSheet(string path2css)
+    {
+        if (File.Exists(path2css))
+        {
+            try
+            {
+                sitecss = File.ReadAllText(path2css);
+            }
+            catch (Exception ex)
+            {
+                DBg.d(LogLevel.Error, $"Failed to read css file {path2css}. {ex}");
+            }
+        }
+        else
+        {
+            DBg.d(LogLevel.Error, $"CSS file {path2css} does not exist.");
+        }
+    }
 
+    public static void readSitePNG(string path2png)
+    {
+        if (File.Exists(path2png))
+        {
+            try
+            {
+                byte[] bytes = File.ReadAllBytes(path2png);
+                string base64 = Convert.ToBase64String(bytes);
+                sitepng = $"data:image/png;base64,{base64}";
+            }
+            catch (Exception ex)
+            {
+                DBg.d(LogLevel.Error, $"Failed to read PNG file {path2png}. {ex}");
+            }
+        }
+        else
+        {
+            DBg.d(LogLevel.Error, $"PNG file {path2png} does not exist.");
+        }
     }
 }
 

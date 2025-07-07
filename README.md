@@ -45,10 +45,10 @@ Usage: ./canuseeme(.exe) -- [options]
 Options:
 --port=PORT			  Port to listen on. Default is 5000
 --bind=IP			    IP address to bind to. Default is *       
---hostname=URL		URL to use in links. Default is http://localhost    //future - when there are admin pages
---runlevel=LEVEL	Log level. Default is Information                   //.net levels debug, trace, information, warn, fatal
---sitecss=URL			URL to the site stylesheet. Default is null         //future - when there are admin pages
---sitepng=URL			URL to the site favicon.ico. Default is null        //future - when there are admin pages
+--hostname=URL		URL to use in links. Default is http://localhost 
+--runlevel=LEVEL	Log level. Default is Information (Trace -> Debug -> Information -> Warn -> Fatal)
+--sitecss=URL			PATH to the site stylesheet. Default is null       
+--sitepng=URL			PATH to the site favicon.ico (jpg and png). Default is null 
 --help            This
 ```
 ## Using: 

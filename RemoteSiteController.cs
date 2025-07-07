@@ -17,7 +17,7 @@ public class RemoteSiteController
     }
 
 
-    public bool hostDNSLookup()
+    public async Task<bool> hostDNSLookup()
     {
 
         string fn = "hostLookup"; DBg.d(LogLevel.Trace, fn);
@@ -31,24 +31,22 @@ public class RemoteSiteController
         // lets do a DNS resolve on the hostname
         try
         {
-            rsd.resolvedIPs = Dns.GetHostEntry(rsd.host);
-            DBg.d(LogLevel.Trace, $"hostEntry.HostName: {rsd.resolvedIPs.HostName}");
-            DBg.d(LogLevel.Trace, $"hostEntry.AddressList: {rsd.resolvedIPs.AddressList}");
-            // if we have an address list, lets try and get the first one
-            if (rsd.resolvedIPs.AddressList.Length > 0)
+            var addresses = await Dns.GetHostAddressesAsync(rsd.host);
+            if (addresses.Length > 0)
             {
-                IPAddress ip = rsd.resolvedIPs.AddressList[0];
-                DBg.d(LogLevel.Trace, $"ip: {ip}");
+                rsd.ipAddresses = addresses.Select(ip => ip.ToString()).ToArray();
+                DBg.d(LogLevel.Trace, $"ip: {rsd.ipAddresses[0]}");
                 return true;
             }
             else
             {
-                DBg.d(LogLevel.Error, "hostEntry.AddressList.Length == 0");
+                DBg.d(LogLevel.Error, "No addresses found.");
                 return false;
             }
         }
         catch (Exception e)
         {
+            rsd.ExceptionInfo = new ExceptionInfoDto(e);
             DBg.d(LogLevel.Error, e.Message);
             return false;
         }
@@ -85,6 +83,8 @@ public class RemoteSiteController
         }
         catch (Exception e)
         {
+            rsd.ExceptionInfo = new ExceptionInfoDto(e);
+
             DBg.d(LogLevel.Error, e.Message);
             rsd.pingResponse = e.Message;
             return false;
@@ -96,7 +96,7 @@ public class RemoteSiteController
         string fn = "portCheck"; DBg.d(LogLevel.Trace, fn);
         string msg = null;
         // if there aren't any resolved addresses, skip this
-        if ((rsd.resolvedIPs == null) || (rsd.resolvedIPs.AddressList.Length == 0))
+        if ((rsd.ipAddresses == null) || (rsd.ipAddresses.Length == 0))
         {
             msg = "No DNS resolved addresses. Cannot check port.";
             DBg.d(LogLevel.Error, msg);
@@ -118,19 +118,11 @@ public class RemoteSiteController
 
 
 
-            DBg.d(LogLevel.Trace, $"trying host: {rsd.resolvedIPs.AddressList[0]}:{portInt} with PROTOCOL:  {rsd.portType}");
+            DBg.d(LogLevel.Trace, $"trying host: {rsd.ipAddresses[0]}:{portInt} with PROTOCOL:  {rsd.portType}");
             using (var client = new TcpClient())
             {
-                var address = rsd.resolvedIPs.AddressList[0];
-                if (address.AddressFamily != AddressFamily.InterNetwork && address.AddressFamily != AddressFamily.InterNetworkV6)
-                {
-                    msg = $"Unsupported address family: {address.AddressFamily}";
-                    DBg.d(LogLevel.Error, msg);
-                    rsd.portResponse = msg;
-                    return false;
-                }
-
-
+                var address = rsd.ipAddresses[0];
+             
                 var connectTask = client.ConnectAsync(address, portInt);
 
                 if (await Task.WhenAny(connectTask, Task.Delay(timeout)) == connectTask)
@@ -209,7 +201,7 @@ public class RemoteSiteController
 
                             // Read response
                             var response = await reader.ReadLineAsync();
-                            msg += $"Received response: {response}";
+                            msg += $"\nReceived response: {response}";
                             DBg.d(LogLevel.Trace, $"Received response: {response}");
 
                             // Check if the response is a 302 redirect
@@ -297,6 +289,7 @@ public class RemoteSiteController
         }
         catch (Exception ex)
         {
+            rsd.ExceptionInfo = new ExceptionInfoDto(ex);
 
             var fullMessage = $"Exception ------- {ex.Message}\n{ex.StackTrace}";
             if (ex.InnerException != null)
@@ -369,7 +362,8 @@ public class RemoteSiteController
         {
 
             DBg.d(LogLevel.Trace, $"querying url: {rsd.url}");
-            msg = $"querying url: GET {rsd.url}";
+            //msg = $"querying url: GET {rsd.url}";
+
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create(rsd.url);
             request.Method = "GET";
             HttpWebResponse response = (HttpWebResponse)request.GetResponse();
@@ -379,14 +373,16 @@ public class RemoteSiteController
             {
                 StreamReader reader = new StreamReader(stream, Encoding.UTF8);
                 string responseString = reader.ReadToEnd();
-                DBg.d(LogLevel.Trace, $"responseString: {responseString.Substring(0, 200)}");
-                msg += $"\nresponseString: {responseString.Substring(0, 200)}";
+                DBg.d(LogLevel.Trace, $"responseString: {responseString.Substring(0, 100)}");
+                //msg += $"\n{responseString.Substring(0, 800)}";
+                msg += responseString;
             }
             rsd.curlResponse = msg;
             return true;
         }
         catch (System.Net.WebException e)
         {
+            rsd.ExceptionInfo = new ExceptionInfoDto(e);
             msg += $"\nException: {e.Message} \n";
             msg += $"\nStatusCode: {e.HResult} \n";
             msg += $"\nResponse: {e.Response} \n";
@@ -397,6 +393,7 @@ public class RemoteSiteController
         }
         catch (Exception e)
         {
+            rsd.ExceptionInfo = new ExceptionInfoDto(e);
             msg += $"\nException: {e.Message} \n";
             msg += $"\nInnerException: {e.InnerException} \n";
             rsd.curlResponse = msg;
