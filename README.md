@@ -38,6 +38,11 @@ which results in:
 }
 ```
 .. which isn't pretty but its functional. This is output that has been pretty-printed by my browser, so that may be adding some unintended relish. 
+**If you want nice HTML formatted output** add `&html` to the end of the web request to `canuseeme`... so that last example would be:
+```
+https://canuseeme.tezoatlipoca.com/lb/?url=https://awadwatt.com/tezoatlipoca&html
+```
+which gives... [well you can see here](https://canuseeme.tezoatlipoca.com/lb/?url=https://awadwatt.com/tezoatlipoca&html). 
 
 ## Command Line
 ```
@@ -57,6 +62,7 @@ The `/lb` endpoint only returns JSON (maybe we'll add an HTML mode later) - Once
 "No URL provided."
 ```
 If you give it a valid `url` parameter it will do its best to query that url for the info above. 
+If you provide the parameter `html` (e.g. `lb?url=<url>&html`) the results will be encapsulated in some nice HTML for readability in a browser.. instead of the default which is `json`.
 If you specify `portType` it will try and use a little intelligence when it queries the port (if one is given as part of the URL), but only so far as what language to speak to that port _with_, like using `EHLO` to talk to an SMTP service. 
 If you try and talk FTP to an IMAP service you're going to get weird results (but `canuseeme` will still _try_). Here are the ports and what `canuseeme` tries to interrogate it with:
 
